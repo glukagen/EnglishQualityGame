@@ -1,0 +1,482 @@
+<html>
+<head> 
+    <title>Main</title>
+	<link rel="StyleSheet" href="/css/my.css" type="text/css">
+</head> 
+<body>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js"></script>
+<script src="/js/myutil.js"></script>
+<script src="/js/json2.js"></script>
+<script>
+
+function readableCountdown(t) {
+    var sec = 1000
+    var min = 60 * sec
+    var hour = 60 * min
+    
+    if (t >= hour) throw "not implemented"
+    var mins = Math.floor(t / min)
+    var secs = Math.floor((t % min) / sec)
+    
+    return mins + ":" + (secs < 10 ? "0" : "") + secs
+}
+
+var currentTimeout = null
+function clearTimer() {
+    if (currentTimeout) {
+        clearTimeout(currentTimeout)
+    }
+}
+function updateTimer(screen, entry) {
+    clearTimer()
+    function updateTimerHelper() {
+        var timeLeft = entry.deadline - time()
+        if (timeLeft <= 0) {
+            alert("time up!")
+            displayMain()
+            return
+        }
+        $('.timer', screen).css('color', 'black').css('font-size', 'medium').html(readableCountdown(timeLeft))
+        currentTimeout = setTimeout(updateTimerHelper, 250)
+    }
+    updateTimerHelper()
+}
+
+function displayEntry(entry) {
+    var screen = $('#entryScreen').clone().css('display', 'block')
+    
+    var contest = entry.contest
+    var words = contest.text.split(/ /)
+    foreach(words, function (word, i) {
+            $('.word' + (i + 1), screen).css('color', 'black').css('font-size', 'medium').text(word)
+    })
+    
+    updateTimer(screen, entry)
+    
+    $('button', screen).click(function () {
+        $.ajax({
+            url : "/api/submitResult",
+            data : {
+                me : username,
+                entry : entry.key,
+                text : $('.input', screen).val()
+            },
+            success : function (s) {
+                displayMain()
+            }
+        })
+    })
+    
+    function updateInputStats() {
+        var text = $('.input', screen).val()
+        var chars = text.length
+        var s = null
+        
+        if (chars < contest.textMin) {
+            s = "must write more"
+        } else if (chars > contest.textMax) {
+            s = "too long. must remove " + (chars - contest.textMax) + " character" + ((chars - contest.textMax) != 1 ? "s" : "")
+        } else {
+            var wordsNeeded = []
+            foreach(words, function (word) {
+                if (!text.match(new RegExp(word, "i"))) {
+                    wordsNeeded.push(word)
+                }
+            })
+            if (wordsNeeded.length == 1) {
+                s = "must include the word: " + wordsNeeded[0]
+            }
+            if (wordsNeeded.length > 1) {
+                s = "must include the words: " + wordsNeeded.slice(0, wordsNeeded.length - 1).join(", ") + " and " + wordsNeeded[wordsNeeded.length - 1]
+            }
+        }
+
+        if (s) {
+            $('button', screen).attr('disabled', 'disabled')
+        } else {
+            $('button', screen).removeAttr('disabled')
+            s = "good. " + (contest.textMax - chars) + " character" + ((contest.textMax - chars) != 1 ? "s" : "") + " left"
+        }
+        
+        $('.inputStats', screen).html(s)
+    }
+    $('.input', screen).keydown(updateInputStats).keyup(updateInputStats)
+    updateInputStats()
+    
+    $('#content').empty().append(screen)
+    $('#content .input').focus()
+}
+</script>
+    <div id="entryScreen" style="display:none">
+        <span style="color:grey;font-size:small">write a paragraph using the words <span class="word1"></span>, <span class="word2"></span> and <span class="word3"></span>.
+        time left: <span class="timer"></span><br>
+        <div style="margin:20px">
+            <textarea class="input" style="width:400px;height:100px"></textarea>
+            <div><small><span class="inputStats"></span></small></div>
+        </div>
+        <div><button>submit</button></div>
+    </div>
+<script>
+
+function displayVote(entry) {
+    var screen = $('#voteScreen').clone().css('display', 'block')
+    
+    var contest = entry.contest
+    foreach(contest.text.split(/ /), function (word, i) {
+            $('.word' + (i + 1), screen).css('color', 'black').css('font-size', 'medium').text(word)
+    })
+    
+    updateTimer(screen, entry)
+    
+    function choseOption(option) {
+        $.ajax({
+            url : "/api/submitResult",
+            data : {
+                me : username,
+                entry : entry.key,
+                text : option
+            },
+            success : function (s) {
+                displayMain()
+            }
+        })
+    }
+    $('.option1', screen).text('1: ' + contest.entry1.text)
+    $('.option2', screen).text('2: ' + contest.entry2.text)
+    $('.button1', screen).click(function () {
+        choseOption("1")
+    })
+    $('.button2', screen).click(function () {
+        choseOption("2")
+    })
+    
+    $('#content').empty().append(screen)	
+	
+	$('#submit_button', screen).click(function(e){
+		if($('input[name=creative]:checked').val() == undefined){
+			console.log('creative == undefined')
+			alert('Please answer on question "which passage do you like the most?"')
+			return false
+		}
+
+		if($('input[name=english]:checked').val() == undefined){
+			alert('Please answer on question "which passage is more likely from a native english speaker?"')
+			return false
+		}	
+		
+		$.ajax({
+            url : "/api/saveVotes",
+            data : {
+                me: username,
+                entry: entry.key,
+                english: $('input[name=english]:checked').val(),
+				creative: $('input[name=creative]:checked').val(),
+            },
+            success : function (s) {
+                displayMain()
+            }
+        })
+		
+		return true
+	})
+}
+</script>
+    <div id="voteScreen" style="display:none">
+        <div style="color:grey">
+            <small>each of these paragraphs uses the words <span class="word1"></span>, <span class="word2"></span> and <span class="word3"></span>.</small><br> select the most natural sounding paragraph. <small> time left: <span class="timer"></small></span>
+        </div>
+        <div style="height:20px">&nbsp;</div>
+        <table>
+            <tr>
+                <td>
+                    <div class="option1" style="width:400px"></div>
+                </td>
+				<!--
+                <td valign="center">
+                    <button style="margin-left:20px" class="button1">&larr; vote</button>
+                </td>
+				-->
+            </tr>
+        </table>
+        <div style="height:20px">&nbsp;</div>
+        <table>
+            <tr>
+                <td>
+                    <div class="option2" style="width:400px"></div>
+                </td>
+				<!--
+                <td valign="center">
+                    <button style="margin-left:20px" class="button2">&larr; vote</button>
+                </td>
+				-->
+            </tr>
+        </table>
+		<div style="height:20px">&nbsp;</div>
+		<table>
+			<tr><td>which passage do you like the most?</td> 
+     		<td>&nbsp; 1: <input type="radio" name="creative" value="1" /> &nbsp;</td><td>
+				&nbsp; 2: <input type="radio" name="creative" value="2" />
+			</td></tr>
+			<tr><td>which passage is more likely from a native english speaker?</td> 
+     		<td>&nbsp; 1: <input type="radio" name="english" value="1" /> &nbsp;</td><td>
+				&nbsp; 2: <input type="radio" name="english" value="2" />
+			</td></tr>
+			<tr><td><button id="submit_button">Submit</button></td></tr>
+		</table>
+    </div>
+<script>
+
+function renderDiv(a) {
+    return $('<div></div>').append(a)
+}
+
+function createContestView(contest, renderUser) {
+    var screen = $('#viewScreen').clone().css('display', 'block')
+    foreach(contest.text.split(/ /), function (word, i) {
+            $('.word' + (i + 1), screen).css('color', 'black').css('font-size', 'medium').text(word)
+    })
+    
+    function renderEntry(e, w) {
+        var div = $('<div></div>')
+        if (e.text)
+        {
+            var words = w.split(/ /)
+            var entry = e.text.split(/ /)
+           
+            for (i=0 ;i<entry.length;i++)
+            {
+                showed = false
+                foreach(words, function (w) {
+                        
+                        if (!showed)
+                            if (jQuery.trim(entry[i]).indexOf(w) != -1)
+                            {
+                                word = jQuery.trim(entry[i]).replace(w,'<b>'+w+'</b>');
+                                div.append(word+" ")
+                                showed = true;                          
+                                
+                            }                        
+                        
+                })
+                if (!showed)
+                {
+                   div.append(entry[i]+" ")
+                }
+            }
+          
+        }
+        else
+            div.append($('<span></span>').css('color', 'grey').text("timed out"))
+        div.append(renderDiv(renderUser(e.user)))
+        return div
+    }
+    
+    $('.option1', screen).append(renderEntry(contest.entry1,contest.text))
+    $('.option2', screen).append(renderEntry(contest.entry2,contest.text))
+    
+    votes = {
+        "1" : $('.votes1', screen),
+        "2" : $('.votes2', screen)
+    }
+    foreach([contest.vote1, contest.vote2, contest.vote3], function (v) {
+        if (v && v.text)
+            votes[v.text].append($('<span></span>').html("&#x2713; ")).append(renderUser(v.user)).append($('<br/>'))
+    })
+    
+    return screen
+}
+</script>
+    <div id="viewScreen" style="display:none">
+        <table>
+            <tr>
+                <td><div style="width:20px"></div></td>
+                <td valign="top">
+                    <small style="color:grey">votes:</small>
+                </td>
+            </tr>
+            <tr><td><div style="height:20px">&nbsp;</div></td></tr>
+            <tr>
+                <td>
+                    <div class="option1" style="width:400px"></div>
+                </td>
+                <td><div style="width:20px"></div></td>
+                <td valign="top">
+                    <div class="votes1"></div>
+                </td>
+            </tr>
+            <tr><td><div style="height:20px">&nbsp;</div></td></tr>
+            <tr>
+                <td>
+                    <div class="option2" style="width:400px"></div>
+                </td>
+                <td><div style="width:20px"></div></td>
+                <td valign="top">
+                    <div class="votes2"></div>
+                </td>
+            </tr>
+        </table>
+    </div>
+<script>
+
+function displayMain(user) {
+    clearTimer()
+    
+    // BUG! fix this!
+    //function refresher() {
+    //    displayMain(user)
+    //    currentTimeout = setTimeout(refresher, 60 * 1000)
+    //}
+    //currentTimeout = setTimeout(refresher, 60 * 1000)
+    
+    $.ajax({
+        url : "/api/getUserInfo",
+        data : {
+            me : username,
+            user : (user ? user.key : undefined)
+        },
+        success : function (s) {
+            load(JSON.parse(s))
+        }
+    })
+    
+    function load(data) {
+        $('#header .username').click(function () {
+            displayMain(data.me)
+        })
+        function getUsername(u) {	
+			var index = 30.0		
+            return (u.key == data.me.key ? "me" : u.username) + " "  
+				+ Math.round(u.creativeScore/index) + "/" + Math.round(u.eloScore/index)
+        }
+        function renderUser(u) {
+            var span = u.key == data.user.key ? $('<b class="username"></b>') : $('<span class="username"></span>')
+            return span.text(getUsername(u)).click(function () {
+                displayMain(u)
+            })
+        }
+        
+        var screen = $('#mainScreen').clone().css('display', 'block')
+        $('.thisUser', screen).append(renderUser(data.me))
+        foreach(data.highScores, function (u) {
+            $('.highScores', screen).append(renderDiv(renderUser(u)))
+        })
+        $('.playButton', screen).click(function () {
+            $.ajax({
+                url : "/api/enterContest",
+                data : {
+                    me : username
+                },
+                success : function (s) {
+                    o = JSON.parse(s)
+                    if (o) {
+                        if (o.mytype == "entry") {
+                            displayEntry(o)
+                        } else {
+                            displayVote(o)
+                        }
+                    } else {
+                        alert('Sorry, there are no available competitions just now. You need to wait until some other people write some passages. Hopefully that will happen soon, but it could be an hour or more, if nobody else is online right now.')
+                    }
+                }
+            })
+        })
+        $('.mainUser', screen).text(getUsername(data.user))
+        var hist = $('.history', screen)
+        if (data.me.key == data.user.key) {
+            hist.append($('<div style="height:40px">&nbsp;</div>'))
+            hist.append($('<div style="font-size:small;color:grey"></div>').text("play more games to affect your score!"))
+        }
+        foreach(data.contests, function (c) {
+            hist.append($('<div style="height:40px">&nbsp;</div>'))
+            if (!c.complete) {
+                var div = $('<div style="font-size:small;color:grey"></div>').text("waiting on results for \"" + c.text + "\"")
+                hist.append(div)
+            } else {
+                hist.append(createContestView(c, renderUser))
+            }
+        })
+        $('#content').empty().append(screen)
+    }
+}
+</script>
+    <div id="mainScreen" style="display:none">
+        <div style="width:100px;float:left">
+            <div class="playButton" style="border:1px solid;width:100px;height:100px;border-radius:15px;-moz-border-radius:15px">
+                <table style="width:100%;height:100%">
+                    <tr><td align="center" valign="center"><span style="font-size:26px;cursor:pointer">play</span></td></tr>
+                </table>
+            </div>
+            <div class="thisUser" style="margin-top:20px"></div>
+            <div style="font-size:small;margin-top:40px">high scorers:</div>
+            <div style="margin-top:20px" class="highScores"></div>
+        </div>
+        <div style="width:550px;float:right;border-left:solid 1px;padding-left:20px">
+            <div class="mainUser"></div>
+            <div class="history"></div>
+        </div>
+    </div>
+<script>
+
+
+function displayHeader() {
+    var screen = $('#headerScreen').clone().css('display', 'block')
+    
+    $('.username', screen).text(username)
+    if (logoutUrl) {
+        $('.logout', screen).attr("href", logoutUrl)
+    } else {
+        $('.logout', screen).remove()
+    }
+    
+    $('#header').empty().append(screen)
+}
+</script>
+    <div id="headerScreen" style="display:none;margin-bottom:20px">
+        <div style="float:right"><small><span class="username"></span>
+        <a class="logout" style="color:grey"><span>logout</span></a></small></div>
+        <div style="clear:both"></div>
+    </div>
+<script>
+
+
+$(function () {
+    $('body').ajaxError(function (_, s) {
+        var err = s.responseText
+        var m = err.match(/Exception: (.*)/)
+        if (m) {
+            err = m[1]
+        }
+        alert("error: " + err)
+    })
+    
+    username = getUrlParams()["me"] || {{username}}
+    logoutUrl = {{logoutUrl}}
+    
+    displayHeader()
+    displayMain()
+	
+    // testing stuff
+    if (false) {
+        entry = {
+            text : "hello hi howdy",
+            deadline : time() + (60 * 1000),
+            options : [
+                "WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW WWWW",
+                "iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii iiii"
+            ]
+        }
+        displayVote(entry)
+    }
+})
+
+</script>
+
+<div id="header">
+</div>
+<div style="width:100%">
+    <div id="content" style="width:800px;margin:auto">
+    </div>
+</div>
+
+</body>
+</html>
